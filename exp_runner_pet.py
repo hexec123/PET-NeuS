@@ -144,7 +144,7 @@ class Runner:
         self.sdf_network.progress.data.fill_(progress_data)
 
         iter_i = 0
-        while iter_i in tqdm(range(res_step)):
+        for iter_i in tqdm(range(res_step), desc="Training", dynamic_ncols=True):
 
             idx_list = image_perm[self.iter_step % len(image_perm)]
 

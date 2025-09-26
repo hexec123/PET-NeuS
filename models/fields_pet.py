@@ -23,9 +23,9 @@ class SDFNetwork(nn.Module):
         dims = [d_in] + [d_hidden for _ in range(n_layers)] + [d_out]
 
         self.embed_fn_fine = None
-
         self.multires = multires
-        self.progress = torch.nn.Parameter(torch.tensor(0.), requires_grad=False)  # use Parameter so it could be checkpointed
+        # Parameter so that it's saved in checkpoints
+        self.progress = torch.nn.Parameter(torch.tensor(0.), requires_grad=False)
 
         if multires > 0:
             embed_fn, input_ch = get_embedder(multires, input_dims=d_in)
@@ -78,12 +78,13 @@ class SDFNetwork(nn.Module):
             input_enc = self.embed_fn_fine(inputs)
             nfea_eachband = int(input_enc.shape[1] / self.multires)
             N = int(self.multires / 2)
-            inputs_enc, weight = coarse2fine(0.5 * (self.progress.data-0.1), input_enc, self.multires)
+
+            inputs_enc, weight = coarse2fine(0.5 * (self.progress.data - 0.1), input_enc, self.multires)
             inputs_enc = inputs_enc.view(-1, self.multires, nfea_eachband)[:, :N, :].view([-1, self.num_eoc])
 
             input_enc = input_enc.view(-1, self.multires, nfea_eachband)[:, :N, :].view([-1, self.num_eoc]).contiguous()
             input_enc = (input_enc.view(-1, N) * weight[:N]).view([-1, self.num_eoc])
-            flag = weight[:N].tile(input_enc.shape[0], nfea_eachband,1).transpose(1,2).contiguous().view([-1, self.num_eoc])
+            flag = weight[:N].tile(input_enc.shape[0], nfea_eachband, 1).transpose(1, 2).contiguous().view([-1, self.num_eoc])
             inputs_enc = torch.where(flag > 0.01, inputs_enc, input_enc)
 
             inputs = torch.cat([inputs, inputs_enc], dim=-1)
@@ -91,12 +92,9 @@ class SDFNetwork(nn.Module):
         x = inputs
         for l in range(0, self.num_layers - 1):
             lin = getattr(self, "lin" + str(l))
-
             if l in self.skip_in:
                 x = torch.cat([x, inputs], 1) / np.sqrt(2)
-
             x = lin(x)
-
             if l < self.num_layers - 2:
                 x = self.activation(x)
         return torch.cat([x[:, :1] / self.scale, x[:, 1:]], dim=-1)
@@ -110,14 +108,15 @@ class SDFNetwork(nn.Module):
     def gradient(self, x):
         x.requires_grad_(True)
         y = self.sdf(x)
-        d_output = torch.ones_like(y, requires_grad=False, device=y.device)
+        d_output = torch.ones_like(y, device=x.device, requires_grad=False)
         gradients = torch.autograd.grad(
             outputs=y,
             inputs=x,
             grad_outputs=d_output,
             create_graph=True,
             retain_graph=True,
-            only_inputs=True)[0]
+            only_inputs=True
+        )[0]
         return gradients.unsqueeze(1)
 
 
@@ -133,13 +132,12 @@ class RenderingNetwork(nn.Module):
                  multires_view=0,
                  squeeze_out=True):
         super().__init__()
-
         self.mode = mode
         self.squeeze_out = squeeze_out
         dims = [d_in + d_feature] + [d_hidden for _ in range(n_layers)] + [d_out]
 
         self.multires_view = multires_view
-        self.progress = torch.nn.Parameter(torch.tensor(0.), requires_grad=False)  # use Parameter so it could be checkpointed
+        self.progress = torch.nn.Parameter(torch.tensor(0.), requires_grad=False)
 
         self.embedview_fn = None
         if multires_view > 0:
@@ -152,10 +150,8 @@ class RenderingNetwork(nn.Module):
         for l in range(0, self.num_layers - 1):
             out_dim = dims[l + 1]
             lin = nn.Linear(dims[l], out_dim)
-
             if weight_norm:
                 lin = nn.utils.weight_norm(lin)
-
             setattr(self, "lin" + str(l), lin)
 
         self.relu = nn.ReLU()
@@ -166,22 +162,19 @@ class RenderingNetwork(nn.Module):
             view_dirs_enc, weight = coarse2fine(self.progress.data, view_dirs_enc, self.multires_view)
             view_dirs = torch.cat([view_dirs, view_dirs_enc], dim=-1)
 
-        rendering_input = None
-
         if self.mode == 'idr':
             rendering_input = torch.cat([points, view_dirs, normals, feature_vectors], dim=-1)
         elif self.mode == 'no_view_dir':
             rendering_input = torch.cat([points, normals, feature_vectors], dim=-1)
         elif self.mode == 'no_normal':
             rendering_input = torch.cat([points, view_dirs, feature_vectors], dim=-1)
+        else:
+            raise ValueError(f"Unknown rendering mode: {self.mode}")
 
         x = rendering_input
-
         for l in range(0, self.num_layers - 1):
             lin = getattr(self, "lin" + str(l))
-
             x = lin(x)
-
             if l < self.num_layers - 2:
                 x = self.relu(x)
 
@@ -213,7 +206,7 @@ class NeRF(nn.Module):
 
         self.multires = multires
         self.multires_view = multires_view
-        self.progress = torch.nn.Parameter(torch.tensor(0.), requires_grad=False)  # use Parameter so it could be checkpointed
+        self.progress = torch.nn.Parameter(torch.tensor(0.), requires_grad=False)
 
         if multires > 0:
             embed_fn, input_ch = get_embedder(multires, input_dims=d_in)
@@ -230,9 +223,9 @@ class NeRF(nn.Module):
 
         self.pts_linears = nn.ModuleList(
             [nn.Linear(self.input_ch, W)] +
-            [nn.Linear(W, W) if i not in self.skips else nn.Linear(W + self.input_ch, W) for i in range(D - 1)])
-
-
+            [nn.Linear(W, W) if i not in self.skips else nn.Linear(W + self.input_ch, W)
+             for i in range(D - 1)]
+        )
         self.views_linears = nn.ModuleList([nn.Linear(self.input_ch_view + W, W // 2)])
 
         if use_viewdirs:
@@ -263,15 +256,13 @@ class NeRF(nn.Module):
             alpha = self.alpha_linear(h)
             feature = self.feature_linear(h)
             h = torch.cat([feature, input_views], -1)
-
             for i, l in enumerate(self.views_linears):
                 h = self.views_linears[i](h)
                 h = F.relu(h)
-
             rgb = self.rgb_linear(h)
             return alpha, rgb
         else:
-            assert False
+            raise NotImplementedError("Forward without viewdirs not implemented.")
 
 
 class SingleVarianceNetwork(nn.Module):
@@ -280,7 +271,7 @@ class SingleVarianceNetwork(nn.Module):
         self.register_parameter('variance', nn.Parameter(torch.tensor(init_val)))
 
     def forward(self, x):
-        return torch.ones([len(x), 1]) * torch.exp(self.variance * 10.0)
+        return torch.ones([len(x), 1], device=x.device) * torch.exp(self.variance * 10.0)
 
 
 def coarse2fine(progress_data, inputs, L):
@@ -289,7 +280,8 @@ def coarse2fine(progress_data, inputs, L):
         start, end = barf_c2f
         alpha = (progress_data - start) / (end - start) * L
         k = torch.arange(L, dtype=torch.float32, device=inputs.device)
-        weight = (1 - (alpha - k).clamp_(min=0, max=1).mul_(np.pi).cos_()) / 2
+        weight = (1 - torch.cos((alpha - k).clamp(min=0, max=1) * np.pi)) / 2
         shape = inputs.shape
-        input_enc = (inputs.view(-1, L, int(shape[1]/L)) * weight.tile(int(shape[1]/L),1).T).view(*shape)
+        input_enc = (inputs.view(-1, L, int(shape[1] / L)) *
+                     weight.tile(int(shape[1] / L), 1).T).view(*shape)
     return input_enc, weight
