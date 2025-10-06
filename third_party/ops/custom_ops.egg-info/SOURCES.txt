@@ -1,0 +1,8 @@
+bias_act.cpp
+gridsample_bindings.cpp
+gridsample_cuda.cu
+setup.py
+custom_ops.egg-info/PKG-INFO
+custom_ops.egg-info/SOURCES.txt
+custom_ops.egg-info/dependency_links.txt
+custom_ops.egg-info/top_level.txt

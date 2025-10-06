@@ -1,0 +1,4 @@
+# ninja log v5
+0	14147	1758827048219806539	/petneus/third_party/ops/build/temp.linux-x86_64-cpython-310/bias_act.o	bd4af5bd95c00252
+0	14049	1758827062551038627	/petneus/third_party/ops/build/temp.linux-x86_64-cpython-310/gridsample_bindings.o	fcd353d2ca4fd268
+0	40415	1758827088908465251	/petneus/third_party/ops/build/temp.linux-x86_64-cpython-310/gridsample_cuda.o	7ac87137432fa3cc
